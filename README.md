@@ -30,8 +30,8 @@ Create an inventory file (e.g., `inventory`) with the target hosts:
 
 ```ini
 [all]
-server1 ansible_host=192.168.1.10 ansible_user=root
-server2 ansible_host=192.168.1.11 ansible_user=root
+server1 ansible_host=192.168.1.10 ansible_user=sysadm
+server2 ansible_host=192.168.1.11 ansible_user=sysadm
 ```
  ### Execute the Playbook
 
