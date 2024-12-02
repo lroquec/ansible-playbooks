@@ -1,0 +1,13 @@
+- name: Add Worker Nodes - Join Cluster
+  hosts: all
+  become: true
+  vars:
+    control_plane_ip: "192.168.5.184"
+    token: "replace this with your token"
+    discovery_hash: "replace this with your discovery hash"
+    node_name: "worker01"
+  tasks:
+    - name: Join worker to Kubernetes cluster
+      command: >
+        kubeadm join {{ control_plane_ip }}:6443 --token {{ token }} --discovery-token-ca-cert-hash {{ discovery_hash }} --node-name={{ node_name }}
+
