@@ -1,0 +1,46 @@
+- become: true
+  hosts: all
+  name: Prepare Nodes - Complete Setup
+  tasks:
+  - apt:
+      update_cache: true
+    name: Update apt packages
+  - apt:
+      autoremove: true
+      upgrade: dist
+    name: Upgrade packages
+  - apt:
+      name:
+      - curl
+      - apt-transport-https
+      - vim
+      - git
+      - wget
+      - software-properties-common
+      - lsb-release
+      - ca-certificates
+      - socat
+      state: present
+    name: Install dependencies
+  - command: swapoff -a
+    name: Disable swap
+  - name: Ensure swap is disabled in fstab
+    replace:
+      path: /etc/fstab
+      regexp: .*swap.*
+      replace: '# \1'
+  - command: modprobe {{ item }}
+    name: Load kernel modules
+    with_items:
+    - overlay
+    - br_netfilter
+  - blockinfile:
+      block: 'net.bridge.bridge-nf-call-ip6tables = 1
+
+        net.bridge.bridge-nf-call-iptables = 1
+
+        net.ipv4.ip_forward = 1'
+      path: /etc/sysctl.d/kubernetes.conf
+    name: Set sysctl params for Kubernetes
+  - command: sysctl --system
+    name: Apply sysctl settings
