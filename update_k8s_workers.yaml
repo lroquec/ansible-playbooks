@@ -1,0 +1,71 @@
+- name: Update Kubernetes Worker Nodes
+  hosts: all
+  become: yes
+  vars:
+    kube_repo_version: "1.31"  # Specify the desired Kubernetes repo version here
+    kube_version: "1.31.3"  # Specify the desired Kubernetes version here
+  tasks:
+    - name: Update Kubernetes repository to the latest version
+      apt_repository:
+        repo: "deb https://pkgs.k8s.io/core:/stable:/v{{ kube_repo_version }}/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Unlock the kubeadm package
+      apt:
+        name: kubeadm
+        state: present
+        mark_hold: no
+
+    - name: Install the specific version of kubeadm
+      apt:
+        name: "kubeadm={{ kube_version }}"
+        state: present
+
+    - name: Lock the kubeadm package at the installed version
+      apt:
+        name: kubeadm
+        state: present
+        mark_hold: yes
+
+    - name: Upgrade the node configuration
+      command: kubeadm upgrade node
+
+    - name: Unlock the kubelet package
+      apt:
+        name: kubelet
+        state: present
+        mark_hold: no
+
+    - name: Unlock the kubectl package
+      apt:
+        name: kubectl
+        state: present
+        mark_hold: no
+
+    - name: Install specific versions of kubelet and kubectl
+      apt:
+        name:
+          - "kubelet={{ kube_version }}"
+          - "kubectl={{ kube_version }}"
+        state: present
+
+    - name: Lock kubelet and kubectl packages at the installed versions
+      apt:
+        name:
+          - kubelet
+          - kubectl
+        state: present
+        mark_hold: yes
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Restart kubelet service
+      service:
+        name: kubelet
+        state: restarted
