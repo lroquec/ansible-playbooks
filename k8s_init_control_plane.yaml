@@ -1,0 +1,63 @@
+- name: Initialize Control Plane - Complete Setup
+  hosts: control_plane
+  become: true
+  vars:
+    kubernetes_repo_version: "v1.30"
+    kubernetes_package_version: "1.30.1-1.1"
+    pod_subnet: "10.0.0.0/16"
+    control_plane_alias: "k8scp"
+    control_plane_ip: "192.168.5.184"
+  tasks:
+    - name: Download Kubernetes signing key
+      command: >
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/Release.key |
+        gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes repo
+      blockinfile:
+        path: /etc/apt/sources.list.d/kubernetes.list
+        block: |
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/ /
+
+    - name: Update apt with Kubernetes repo
+      apt:
+        update_cache: true
+
+    - name: Install Kubernetes components
+      apt:
+        name:
+          - kubeadm={{ kubernetes_package_version }}
+          - kubelet={{ kubernetes_package_version }}
+          - kubectl={{ kubernetes_package_version }}
+        state: present
+
+    - name: Hold Kubernetes packages
+      command: apt-mark hold kubeadm kubelet kubectl
+
+    - name: Create kubeadm-config.yaml
+      copy:
+        dest: /root/kubeadm-config.yaml
+        content: |
+          apiVersion: kubeadm.k8s.io/v1beta3
+          kind: ClusterConfiguration
+          kubernetesVersion: {{ kubernetes_package_version }}
+          controlPlaneEndpoint: "{{ control_plane_alias }}:6443"
+          networking:
+            podSubnet: "{{ pod_subnet }}"
+
+    - name: Update /etc/hosts with Control Plane alias
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ control_plane_ip }} {{ control_plane_alias }}"
+        state: present
+
+    - name: Initialize Kubernetes cluster
+      command: >
+        kubeadm init --config=/root/kubeadm-config.yaml --upload-certs --node-name=control_plane
+      register: kubeadm_output
+
+    - name: Save kubeadm init output
+      copy:
+        content: "{{ kubeadm_output.stdout }}"
+        dest: /root/kubeadm-init.out
+
