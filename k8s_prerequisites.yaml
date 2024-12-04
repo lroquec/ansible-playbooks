@@ -35,12 +35,35 @@
     - overlay
     - br_netfilter
   - blockinfile:
-      block: 'net.bridge.bridge-nf-call-ip6tables = 1
-
+      block: |
+        net.bridge.bridge-nf-call-ip6tables = 1
         net.bridge.bridge-nf-call-iptables = 1
-
-        net.ipv4.ip_forward = 1'
+        net.ipv4.ip_forward = 1
       path: /etc/sysctl.d/kubernetes.conf
     name: Set sysctl params for Kubernetes
   - command: sysctl --system
     name: Apply sysctl settings
+  - name: Add Docker GPG key
+    command: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/docker.gpg
+  - apt_repository:
+      repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+    name: Add Docker repository
+  - apt:
+      update_cache: true
+    name: Update apt cache after adding Docker repo
+  - apt:
+      name: containerd.io
+      state: present
+    name: Install containerd.io
+  - command: containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+    name: Generate default containerd config
+  - lineinfile:
+      path: /etc/containerd/config.toml
+      regexp: 'SystemdCgroup = false'
+      line: 'SystemdCgroup = true'
+    name: Update containerd config to use systemd cgroup
+  - systemd:
+      name: containerd
+      state: restarted
+      enabled: true
+    name: Restart and enable containerd
