@@ -1,0 +1,22 @@
+---
+- name: Add calico
+  hosts: master_nodes
+  become: yes
+  vars:
+    calico_manifest: "https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml"
+
+  tasks:
+
+    - name: Apply calico manifest
+      command: kubectl apply -f {{ calico_manifest }}
+      register: calico_result
+      retries: 5
+      delay: 10
+      until: calico_result.rc == 0
+      ignore_errors: yes
+
+    - name: Verify calico was applied
+      debug:
+        msg: "Calico was applied."
+      when: calico_result.rc == 0
+
