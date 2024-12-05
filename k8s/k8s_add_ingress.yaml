@@ -1,0 +1,22 @@
+---
+- name: Add ingress_nginx_manifest
+  hosts: master_nodes
+  become: yes
+  vars:
+    ingress_nginx_manifest: "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
+
+  tasks:
+
+    - name: Ingress NGINX
+      command: kubectl apply -f {{ ingress_nginx_manifest }}
+      register: ingress_result
+      retries: 5
+      delay: 10
+      until: ingress_result.rc == 0
+      ignore_errors: yes
+
+    - name: Debug
+      debug:
+        msg: "Ingress NGINX applied successfully"
+      when: ingress_result.rc == 0
+
