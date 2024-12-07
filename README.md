@@ -215,3 +215,46 @@ To execute the playbook, run the following command:
 ansible-playbook -i <inventory_file> update_kubernetes_worker.yml
 ```
 Replace <inventory_file> with your Ansible inventory file path.
+
+# Add Ingress NGINX Manifest Playbook
+
+An Ansible playbook to deploy the Ingress NGINX controller on Kubernetes master nodes. This playbook applies the Ingress NGINX manifest to your Kubernetes cluster, ensuring that the necessary Ingress controller is installed and configured properly.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Playbook Overview](#playbook-overview)
+- [Variables](#variables)
+- [Tasks](#tasks)
+- [Usage](#usage)
+- [Example](#example)
+- [License](#license)
+- [Contributing](#contributing)
+
+## Prerequisites
+
+Before running this playbook, ensure that the following prerequisites are met:
+
+- **Ansible** is installed on the control node.
+- **kubectl** is installed and configured on the target master nodes.
+- **Kubernetes Cluster** is up and running with designated master nodes.
+- **Appropriate Permissions** to execute commands on the master nodes (e.g., SSH access).
+- **Internet Access** on master nodes to fetch the Ingress NGINX manifest.
+
+## Playbook Overview
+
+This playbook performs the following actions:
+
+1. **Applies the Ingress NGINX Manifest**: Downloads and applies the Ingress NGINX controller manifest to the Kubernetes cluster.
+2. **Retries on Failure**: Attempts to apply the manifest up to 5 times with a 10-second delay between retries in case of failures.
+3. **Error Handling**: Continues execution even if the manifest application fails, allowing for debugging.
+4. **Debug Message**: Outputs a success message if the Ingress NGINX is applied successfully.
+
+## Variables
+
+### `ingress_nginx_manifest`
+
+- **Description**: URL to the Ingress NGINX controller manifest YAML file.
+- **Default Value**: 
+  ```yaml
+  "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
