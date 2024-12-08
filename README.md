@@ -292,8 +292,8 @@ This Ansible playbook provides a robust, multi-layered security solution for Ubu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/security-hardening-playbook.git
-cd security-hardening-playbook
+git clone git@github.com:lroquec/ansible-playbooks.git
+cd ansible-playbooks
 ```
 
 2. Install required Ansible collections:
@@ -404,7 +404,7 @@ sudo tail -f /var/log/fail2ban.log
 
 ## License
 
-[Specify your license, e.g., MIT, Apache 2.0]
+Apache 2.0
 
 ## Disclaimer
 
