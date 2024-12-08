@@ -258,3 +258,158 @@ This playbook performs the following actions:
 - **Default Value**: 
   ```yaml
   "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
+
+# Comprehensive Server Security Hardening Playbook
+
+## Overview
+
+This Ansible playbook provides a robust, multi-layered security solution for Ubuntu and Alma Linux servers, focusing on intrusion prevention and system hardening.
+
+### Key Features
+
+- 🔒 Fail2Ban configuration
+- 🛡️ Multi-vector attack prevention
+- 🌐 Cross-distribution compatibility
+- 🚫 Protection against:
+  - SSH brute-force attacks
+  - WordPress login attempts
+  - HTTP errors
+  - Web scrapers
+  - SQL injection attempts
+
+## Prerequisites
+
+### Supported Distributions
+- Ubuntu (Debian-based)
+- Alma Linux (Red Hat-based)
+
+### Requirements
+- Ansible 2.9+
+- Python 3
+- Root/sudo access
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/security-hardening-playbook.git
+cd security-hardening-playbook
+```
+
+2. Install required Ansible collections:
+```bash
+ansible-galaxy collection install ansible.posix community.general
+```
+
+## Configuration
+
+### Variables Overview
+
+Edit `group_vars/all.yml` or pass variables during playbook execution:
+
+#### Security Configuration
+```yaml
+security_config:
+  enable_fail2ban: true        # Enable/disable Fail2Ban
+  enable_modsecurity: false    # Enable/disable ModSecurity
+```
+
+#### Fail2Ban Jail Configuration
+```yaml
+fail2ban_jails:
+  ssh:
+    enabled: true
+    maxretry: 3
+    bantime: 3600  # 1 hour ban
+  wordpress:
+    enabled: true
+    maxretry: 5
+    bantime: 86400  # 1 day ban
+```
+
+### Customization Options
+
+- Adjust `maxretry` to control attempt limits
+- Modify `bantime` to set ban duration
+- Enable/disable specific protection modules
+- Customize log paths and filtering
+
+## Usage
+
+### Basic Execution
+```bash
+ansible-playbook -i inventory security_hardening.yml
+```
+
+### Selective Execution
+```bash
+# Run only Fail2Ban configuration
+ansible-playbook -i inventory security_hardening.yml --tags fail2ban
+
+# Skip ModSecurity installation
+ansible-playbook -i inventory security_hardening.yml --skip-tags modsecurity
+```
+
+## Security Levels
+
+### 🟢 Low Risk Configuration
+- SSH protection
+- Basic WordPress login prevention
+
+### 🟠 Medium Risk Configuration
+- Add HTTP error and scraper protection
+- Moderate ban times
+
+### 🔴 High Risk Configuration
+- Full protection suite
+- Long ban times
+- ModSecurity integration
+
+## Logging and Monitoring
+
+- Security events logged to `/var/log/ansible-security-audit.log`
+- Fail2Ban maintains its own logs for banned IPs
+- Optional email alerting configurable
+
+## Best Practices
+
+1. Always test in a staging environment
+2. Regularly update the playbook
+3. Monitor system logs
+4. Adjust configurations based on your specific needs
+
+## Troubleshooting
+
+### Common Issues
+- Verify Ansible and Python versions
+- Check log files for detailed error information
+- Ensure proper SSH and sudo access
+
+### Debugging
+```bash
+# Check Fail2Ban status
+sudo systemctl status fail2ban
+
+# View Fail2Ban logs
+sudo tail -f /var/log/fail2ban.log
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+[Specify your license, e.g., MIT, Apache 2.0]
+
+## Disclaimer
+
+This playbook is provided as-is. Always review and customize according to your specific security requirements.
+
+---
+
+**Note**: Continuous security is a journey, not a destination. Regularly review and update your security configurations.
