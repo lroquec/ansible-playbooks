@@ -1,0 +1,211 @@
+---
+- name: Comprehensive Server Security Hardening
+  hosts: all
+  become: yes
+  vars:
+    # Global security configuration
+    security_config:
+      # Enable/disable specific protections
+      enable_fail2ban: true
+      enable_modsecurity: false
+      
+    # Logging and notification configuration
+    logging:
+      # Optional email for security alerts
+      alert_email: "security@example.com"
+      
+    # Path configurations
+    paths:
+      wordpress_log: "/var/log/wordpress/wordpress.log"
+      nginx_access_logs:
+        - "/var/log/nginx/access.log"
+        - "/var/log/nginx/other-site-access.log"
+      nginx_error_logs:
+        - "/var/log/nginx/error.log"
+
+    # Fail2Ban global settings
+    fail2ban_global:
+      # Unified configuration for all jails
+      default_findtime: 600    # 10 minutes
+      default_bantime: 3600    # 1 hour (more reasonable default)
+
+    # Detailed security jail configurations
+    fail2ban_jails:
+      ssh:
+        enabled: true
+        port: ssh
+        filter: sshd
+        logpath: "{{ '/var/log/auth.log' if ansible_os_family == 'Debian' else '/var/log/secure' }}"
+        maxretry: 3
+        findtime: 300
+        bantime: 3600  # 1 hour for SSH
+      
+      wordpress:
+        enabled: true
+        filter: wordpress
+        logpath: "{{ paths.wordpress_log }}"
+        maxretry: 5
+        findtime: 600
+        bantime: 86400  # 1 day for WordPress attacks
+      
+      http_errors:
+        enabled: true
+        filter: http-errors
+        logpath: "{{ paths.nginx_access_logs | join(' ') }}"
+        maxretry: 10
+        findtime: 600
+        bantime: 7200  # 2 hours
+      
+      scrapers:
+        enabled: true
+        filter: scrapers
+        logpath: "{{ paths.nginx_access_logs | join(' ') }}"
+        maxretry: 20
+        findtime: 600
+        bantime: 86400  # 1 day
+      
+      sql_injection:
+        enabled: true
+        filter: sql-injection
+        logpath: "{{ paths.nginx_access_logs | join(' ') }}"
+        maxretry: 5
+        findtime: 600
+        bantime: 86400  # 1 day
+
+    # ModSecurity configuration
+    modsecurity:
+      version: "v3.3.4"  # Latest stable version
+      web_server: "nginx"  # 'apache' or 'nginx'
+      crs_version: "v3.3.4"
+
+  pre_tasks:
+    - name: Validate Security Configuration
+      block:
+        - name: Check required packages are installed
+          package:
+            name: 
+              - python3-pip
+              - fail2ban
+            state: present
+      tags: [validation]
+
+  tasks:
+    - name: Install Repository and Base Packages
+      block:
+        - name: Install EPEL repository on Alma Linux
+          yum:
+            name: epel-release
+            state: present
+          when: ansible_os_family == "RedHat"
+
+        - name: Update Package Cache
+          apt:
+            update_cache: yes
+            cache_valid_time: 3600
+          when: ansible_os_family == "Debian"
+
+        - name: Install Base Security Packages
+          package:
+            name:
+              - fail2ban
+              - iptables
+              - fail2ban-systemd
+            state: present
+
+    - name: Configure Fail2Ban Security
+      when: security_config.enable_fail2ban
+      block:
+        - name: Ensure Fail2Ban configuration directory exists
+          file:
+            path: /etc/fail2ban/jail.d
+            state: directory
+            mode: '0755'
+
+        - name: Configure Fail2Ban Global Settings
+          template:
+            src: templates/jail.local.j2
+            dest: /etc/fail2ban/jail.local
+            owner: root
+            group: root
+            mode: '0644'
+          notify: Restart Fail2Ban
+
+        - name: Create Fail2Ban Jail Configurations
+          template:
+            src: templates/jail.conf.j2
+            dest: "/etc/fail2ban/jail.d/{{ item.key }}.conf"
+            owner: root
+            group: root
+            mode: '0644'
+          loop: "{{ fail2ban_jails | dict2items }}"
+          when: item.value.enabled
+          notify: Restart Fail2Ban
+
+        - name: Create Custom Fail2Ban Filters
+          template:
+            src: templates/filter.conf.j2
+            dest: "/etc/fail2ban/filter.d/{{ item.key }}.conf"
+            owner: root
+            group: root
+            mode: '0644'
+          loop: "{{ fail2ban_jails | dict2items }}"
+          when: item.value.enabled
+          notify: Restart Fail2Ban
+
+    - name: Configure ModSecurity
+      when: security_config.enable_modsecurity
+      block:
+        - name: Install ModSecurity Dependencies
+          package:
+            name: 
+              - "{{ 'libapache2-mod-security2' if ansible_os_family == 'Debian' else 'mod_security' }}"
+              - "{{ 'modsecurity-crs' if ansible_os_family == 'Debian' else 'mod_security_crs' }}"
+            state: present
+
+        - name: Download OWASP Core Rule Set
+          unarchive:
+            src: "https://github.com/coreruleset/coreruleset/archive/refs/tags/{{ modsecurity.crs_version }}.tar.gz"
+            dest: /etc/modsecurity/
+            remote_src: yes
+            creates: "/etc/modsecurity/coreruleset-{{ modsecurity.crs_version[1:] }}"
+
+        - name: Configure ModSecurity
+          template:
+            src: templates/modsecurity.conf.j2
+            dest: /etc/modsecurity/modsecurity.conf
+            owner: root
+            group: root
+            mode: '0644'
+          notify: 
+            - Restart Web Server
+
+    - name: Ensure Services are Enabled and Running
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - fail2ban
+        - "{{ modsecurity.web_server }}"
+
+  handlers:
+    - name: Restart Fail2Ban
+      service:
+        name: fail2ban
+        state: restarted
+
+    - name: Restart Web Server
+      service:
+        name: "{{ 'nginx' if modsecurity.web_server == 'nginx' else 'apache2' }}"
+        state: restarted
+
+  post_tasks:
+    - name: Security Audit Logging
+      copy:
+        content: |
+          Playbook Security Configuration Completed
+          Date: {{ ansible_date_time.iso8601 }}
+          Hosts: {{ ansible_play_hosts | join(', ') }}
+          Configuration: Fail2Ban, ModSecurity
+        dest: /var/log/ansible-security-audit.log
+      tags: [always]
