@@ -92,6 +92,7 @@ This Ansible playbook is designed to initialize the Kubernetes control plane on 
 6. Copies the `admin.conf` file to the root user's `.kube/config` file.
 7. Creates the `.kube` directory for a specified user (`username` variable) with appropriate permissions.
 8. Copies the `admin.conf` file to the specified user's `.kube/config` file.
+9. Sets up kubectl autocomplete and k alias.
 
 #### Variables
 
