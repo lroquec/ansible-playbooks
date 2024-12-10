@@ -1,6 +1,6 @@
 ---
 - name: Add calico
-  hosts: master_nodes
+  hosts: controlplane
   become: yes
   vars:
     calico_manifest: "https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml"

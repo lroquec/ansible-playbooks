@@ -1,6 +1,6 @@
 ---
 - name: Add ingress_nginx_manifest
-  hosts: master_nodes
+  hosts: controlplane
   become: yes
   vars:
     ingress_nginx_manifest: "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
