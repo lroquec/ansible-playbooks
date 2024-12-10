@@ -1,63 +1,104 @@
+---
 - name: Initialize Control Plane - Complete Setup
-  hosts: control_plane
+  hosts: controlplane
   become: true
   vars:
-    kubernetes_repo_version: "v1.30"
-    kubernetes_package_version: "1.30.1-1.1"
+    kubernetes_repo_version: "v1.31"
+    kubernetes_package_version: "1.31.1-1.1"
     pod_subnet: "10.0.0.0/16"
     control_plane_alias: "k8scp"
-    control_plane_ip: "192.168.5.184"
+    control_plane_ip: "192.168.5.191"
   tasks:
-    - name: Download Kubernetes signing key
-      command: >
-        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/Release.key |
-        gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    - name: Delete old Kubernetes sources and keys
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/kubernetes.list
+        - /etc/apt/sources.list.d/kubernetes.list.save
+        - /etc/apt/sources.list.d/kubernetes.list~
+        - /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-    - name: Add Kubernetes repo
-      blockinfile:
-        path: /etc/apt/sources.list.d/kubernetes.list
-        block: |
-          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/ /
+    - name: Install Docker keyring
+      shell: curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmour -o /etc/apt/trusted.gpg.d/docker.gpg
+      args:
+        creates: /etc/apt/trusted.gpg.d/docker.gpg
 
-    - name: Update apt with Kubernetes repo
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        update_cache: no
+
+    - name: Update the apt cache after adding Docker repository
       apt:
-        update_cache: true
+        update_cache: yes
+        force_apt_get: yes
 
-    - name: Install Kubernetes components
+    - name: Install containerd.io
+      apt:
+        name: containerd.io
+        state: present
+        force_apt_get: yes
+
+    - name: Configure containerd to use systemd cgroup
+      shell: |
+        containerd config default | tee /etc/containerd/config.toml >/dev/null 2>&1
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+      notify: restart containerd
+
+    - name: Install required packages for Kubernetes
       apt:
         name:
-          - kubeadm={{ kubernetes_package_version }}
-          - kubelet={{ kubernetes_package_version }}
-          - kubectl={{ kubernetes_package_version }}
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
         state: present
 
-    - name: Hold Kubernetes packages
-      command: apt-mark hold kubeadm kubelet kubectl
+    - name: Make sure the required directories exist
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
 
-    - name: Create kubeadm-config.yaml
+    - name: Add Kubernetes GPG key
+      shell: curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/Release.key | gpg --dearmour -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes repository
       copy:
-        dest: /root/kubeadm-config.yaml
-        content: |
-          apiVersion: kubeadm.k8s.io/v1beta3
-          kind: ClusterConfiguration
-          kubernetesVersion: {{ kubernetes_package_version }}
-          controlPlaneEndpoint: "{{ control_plane_alias }}:6443"
-          networking:
-            podSubnet: "{{ pod_subnet }}"
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_repo_version }}/deb/ /\n"
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        mode: '0644'
 
-    - name: Update /etc/hosts with Control Plane alias
-      lineinfile:
-        path: /etc/hosts
-        line: "{{ control_plane_ip }} {{ control_plane_alias }}"
+    - name: Update the apt cache after adding Kubernetes repository
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+
+    - name: Install Kubernetes packages
+      apt:
+        name:
+          - "kubelet={{ kubernetes_package_version }}"
+          - "kubeadm={{ kubernetes_package_version }}"
+          - "kubectl={{ kubernetes_package_version }}"
         state: present
+        force_apt_get: yes
 
-    - name: Initialize Kubernetes cluster
-      command: >
-        kubeadm init --config=/root/kubeadm-config.yaml --upload-certs --node-name=control_plane
-      register: kubeadm_output
+    - name: Keep Kubernetes packages on hold
+      command: apt-mark hold kubelet kubeadm kubectl
 
-    - name: Save kubeadm init output
-      copy:
-        content: "{{ kubeadm_output.stdout }}"
-        dest: /root/kubeadm-init.out
+    - name: Enable and start kubelet service
+      systemd:
+        name: kubelet
+        enabled: yes
+        state: started
 
+  handlers:
+    - name: restart containerd
+      systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
