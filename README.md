@@ -45,7 +45,7 @@ This repository contains Ansible playbooks to deploy a Kubernetes cluster using 
 
 ## Playbooks
 
-### 1. `prepare_nodes.yml`
+### 1. `k8s_prerequisites.yaml`
 **Description**: 
 This playbook prepares the nodes (Control Plane and Workers) for Kubernetes installation.
 
@@ -61,9 +61,9 @@ This playbook prepares the nodes (Control Plane and Workers) for Kubernetes inst
 
 ---
 
-### 2. `init_control_plane.yml`
+### 2. `k8s_init_all.yaml`
 **Description**: 
-This playbook initializes the **Control Plane** node and sets up the Kubernetes cluster.
+This playbook initializes all nodes with Kubernetes packages.
 
 **Key tasks**:
 - Configures the Kubernetes repository.
@@ -73,15 +73,36 @@ This playbook initializes the **Control Plane** node and sets up the Kubernetes 
 - Executes the `kubeadm init` command to initialize the cluster.
 
 **Key variables**:
-- `kubernetes_repo_version`: Kubernetes repository version (e.g., `v1.30`).
-- `kubernetes_package_version`: Version of Kubernetes packages (e.g., `1.30.1-1.1`).
-- `pod_subnet`: Subnet used for Pods in the cluster.
+- `kubernetes_repo_version`: Kubernetes repository version (e.g., `v1.31`).
+- `kubernetes_package_version`: Version of Kubernetes packages (e.g., `1.31.1-1.1`).
 - `control_plane_alias`: Alias for the Control Plane node.
 - `control_plane_ip`: IP address of the Control Plane node.
 
 ---
 
-### 3. `add_worker_nodes.yml`
+### 3. `k8s_init_controlplane.yaml`
+**Description**: 
+This Ansible playbook is designed to initialize the Kubernetes control plane on a set of hosts. It performs the following tasks:
+
+1. Checks if the Kubernetes cluster is already initialized by checking for the existence of the `/etc/kubernetes/admin.conf` file.
+2. If the cluster is not initialized, it runs the `kubeadm init` command with the specified `pod_network_cidr` (Pod Network CIDR) value.
+3. Saves the output of the `kubeadm init` command to `/root/kubeadm-init.out` file.
+4. Displays the output of the `kubeadm init` command.
+5. Creates the `.kube` directory for the root user with appropriate permissions.
+6. Copies the `admin.conf` file to the root user's `.kube/config` file.
+7. Creates the `.kube` directory for a specified user (`username` variable) with appropriate permissions.
+8. Copies the `admin.conf` file to the specified user's `.kube/config` file.
+
+#### Variables
+
+The playbook uses the following variables:
+
+- `pod_network_cidr`: The CIDR notation for the Pod Network. Default value: `"10.244.0.0/16"`.
+- `username`: The name of the user for whom the `.kube` directory and configuration file will be created.
+
+---
+
+### 4. `k8s_add_worker.yml`
 **Description**: 
 This playbook adds **Worker** nodes to the cluster using the token generated on the Control Plane node.
 
@@ -100,17 +121,34 @@ This playbook adds **Worker** nodes to the cluster using the token generated on 
 ## How to Use
 
 1. **Prepare the nodes**:
-   Run the `prepare_nodes.yml` playbook on all nodes:
+   Run the `k8s_prerequisites.yaml` playbook on all nodes:
    ```bash
-   ansible-playbook -i inventory.yml prepare_nodes.yml
+   ansible-playbook -i inventory.yml k8s_prerequisites.yaml
    ```
-2. **Initialize the Control Plane: Run the init_control_plane.yml playbook on the Control Plane node**:
+   Run the `k8s_init_all.yaml` playbook on all nodes:
    ```bash
-   ansible-playbook -i inventory.yml init_control_plane.yml
+   ansible-playbook -i inventory.yml k8s_init_all.yaml
+   ```   
+2. **Initialize the Control Plane: Run the k8s_init_controlplane.yaml playbook on the Control Plane node**:
+   1. Ensure that the target hosts are accessible via SSH and have the necessary prerequisites installed (Ansible, Kubernetes, etc.).
+   2. Modify the `hosts` section of the playbook to specify the target hosts where the control plane should be initialized.
+   3. Review and adjust the `pod_network_cidr` and `username` variables as needed.
+   4. Run the playbook using the following command:
+   ```bash
+   ansible-playbook -i inventory.yml k8s_init_controlplane.yaml
    ```
 3. **Add Worker Nodes: Run the add_worker_nodes.yml playbook on the Worker nodes**:
+   With the join info from previous playbook run
    ```bash
    ansible-playbook -i inventory.yml add_worker_nodes.yml
+   ```
+4. **Add network plugin**:
+   ```bash
+   ansible-playbook -i inventory.yml k8s_add_network.yaml
+   ```
+5. **Add ingress controller if needed**:
+   ```bash
+   ansible-playbook -i inventory.yml k8s_add_ingress.yaml
    ```
 
 # Kubernetes Master Node Update Playbook
