@@ -59,3 +59,12 @@
         group: "{{ username }}"
         mode: '0644'
       when: kubeadm_init.stat.exists
+
+    - name: Set alias and completion for kubectl
+      shell:
+        cmd: |
+          echo "alias k=kubectl" >> /root/.bashrc
+          echo "complete -F __start_kubectl k" >> /root/.bashrc
+          echo "alias k=kubectl" >> /home/{{ username }}/.bashrc
+          echo "complete -F __start_kubectl k" >> /home/{{ username }}/.bashrc
+      when: kubeadm_init.stat.exists
