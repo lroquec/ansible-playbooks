@@ -297,6 +297,43 @@ This playbook performs the following actions:
   ```yaml
   "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
 
+# Ansible Playbook: Install and Patch Metrics Server
+
+## Overview
+
+This Ansible playbook installs the Metrics Server in a Kubernetes cluster and patches its deployment to include the `--kubelet-insecure-tls` argument. This ensures compatibility with clusters where kubelet's certificate validation is not configured.
+
+## Features
+
+The playbook performs the following tasks:
+1. Installs the Metrics Server components using the official manifest from the Kubernetes GitHub repository.
+2. Waits for the Metrics Server deployment to be successfully created in the `kube-system` namespace.
+3. Applies a JSON patch to add the `--kubelet-insecure-tls` argument to the Metrics Server container.
+4. Verifies that the patch has been applied successfully.
+
+## Prerequisites
+
+1. **Kubernetes Cluster**: Ensure you have a running Kubernetes cluster with kubeadm installed.
+2. **kubectl**: The `kubectl` command-line tool must be available on the Ansible control node and configured to connect to the cluster.
+3. **Ansible**: Ansible 2.9 or later should be installed on the control node.
+4. **Target Host(s)**: The playbook should target the Kubernetes master node(s).
+
+## Playbook Variables
+
+| Variable                | Description                                                                                     | Default Value                                                                                  |
+|-------------------------|-------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `metrics_server_manifest` | URL of the Metrics Server components YAML file to be applied.                                 | `https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml` |
+| `metrics_server_patch`    | JSON patch to add the `--kubelet-insecure-tls` argument to the Metrics Server deployment.      | `[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]` |
+
+## How to Use
+
+1. Clone this repository or save the playbook file locally.
+2. Update your Ansible inventory file to include your Kubernetes master nodes under the `k8s_masters` group.
+3. Run the playbook with the following command:
+   ```bash
+   ansible-playbook -i inventory metrics_server_install_patch.yaml
+   ```
+
 # Comprehensive Server Security Hardening Playbook
 
 ## Overview
@@ -431,22 +468,6 @@ sudo systemctl status fail2ban
 # View Fail2Ban logs
 sudo tail -f /var/log/fail2ban.log
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
-
-Apache 2.0
-
-## Disclaimer
-
-This playbook is provided as-is. Always review and customize according to your specific security requirements.
 
 ---
 
