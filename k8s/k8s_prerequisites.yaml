@@ -56,10 +56,7 @@
           net.bridge.bridge-nf-call-iptables = 1
           net.ipv4.ip_forward = 1
         create: yes
-
-    - name: Apply sysctl settings
-      ansible.builtin.sysctl:
-        reload: yes
+      notify: Reload sysctl settings
 
     - name: Add Docker GPG key
       ansible.builtin.shell: |
@@ -89,15 +86,30 @@
         dest: /etc/containerd/config.toml
         content: "{{ containerd_config.stdout }}"
         force: yes
+      notify: Restart containerd
 
     - name: Update containerd configuration to use systemd cgroup
       ansible.builtin.lineinfile:
         path: /etc/containerd/config.toml
         regexp: '^SystemdCgroup = false'
         line: 'SystemdCgroup = true'
+      notify: Restart containerd
 
     - name: Restart and enable containerd
       ansible.builtin.systemd:
         name: containerd
         state: restarted
         enabled: yes
+
+  handlers:
+    - name: Reload sysctl settings
+      ansible.builtin.command: sysctl --system
+      become: yes
+
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+        enabled: yes
+      become: yes
+
