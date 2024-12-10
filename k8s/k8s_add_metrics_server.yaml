@@ -1,0 +1,45 @@
+---
+- name: Install and patch Metrics Server
+  hosts: controlplane
+  become: yes
+  gather_facts: no
+
+  vars:
+    # URL for the Metrics Server components manifest
+    metrics_server_manifest: "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
+
+    # The JSON patch to be applied to the metrics-server deployment
+    metrics_server_patch: '[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+
+  tasks:
+    - name: Ensure Metrics Server is installed
+      # Using the command module to apply the manifest from GitHub.
+      # If desired, you can use the kubernetes.core.k8s module.
+      ansible.builtin.command: "kubectl apply -f {{ metrics_server_manifest }}"
+      register: apply_result
+      changed_when: "'configured' in apply_result.stdout"
+
+    - name: Wait for Metrics Server deployment to be created
+      # Uses shell with retry and delay to ensure the deployment is present before patching.
+      ansible.builtin.shell: "kubectl get deployment metrics-server -n kube-system"
+      register: check_deployment
+      until: check_deployment.rc == 0
+      retries: 30
+      delay: 10
+
+    - name: Patch Metrics Server deployment
+      # Applies the JSON patch to add the '--kubelet-insecure-tls' argument.
+      ansible.builtin.command: "kubectl patch deployment metrics-server -n kube-system --type=json -p='{{ metrics_server_patch }}'"
+      register: patch_result
+      changed_when: "'patched' not in patch_result.stdout"
+
+    - name: Verify that Metrics Server is patched
+      # Validates that the '--kubelet-insecure-tls' argument is present in the container args.
+      ansible.builtin.shell: "kubectl get deployment metrics-server -n kube-system -o jsonpath='{.spec.template.spec.containers[0].args}'"
+      register: verify_args
+
+    - name: Fail if patch not applied
+      # If the argument is not found, the task will fail, ensuring correctness.
+      ansible.builtin.fail:
+        msg: "The --kubelet-insecure-tls argument was not found in the metrics-server deployment."
+      when: "'--kubelet-insecure-tls' not in verify_args.stdout"
