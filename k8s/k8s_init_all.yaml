@@ -1,6 +1,6 @@
 ---
-- name: Initialize Control Plane - Complete Setup
-  hosts: controlplane
+- name: Initialize kubeadm - Complete Setup
+  hosts: all
   become: true
   vars:
     kubernetes_repo_version: "v1.31"
