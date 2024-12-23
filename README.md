@@ -335,6 +335,37 @@ The playbook performs the following tasks:
    ansible-playbook -i inventory metrics_server_install_patch.yaml
    ```
 
+# Argo CD Ansible Playbook
+
+This Ansible playbook installs Argo CD on a Kubernetes cluster by creating the `argocd` namespace and applying the official Argo CD installation manifest.
+
+## Overview
+
+- **Namespace Creation**: Creates a namespace named `argocd` (if it does not already exist).
+- **Argo CD Manifest**: Applies the Argo CD installation manifest from the official GitHub repository.
+- **Verification**: Shows a debug message confirming successful application.
+
+## Requirements
+
+- Ansible (version 2.9+ recommended)
+- Access to a Kubernetes cluster (and permissions to create namespaces and apply resources)
+- `kubectl` installed on the control machine where Ansible will run
+
+## Variables
+
+| Variable         | Description                                                                       | Default                                                                                   |
+|------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| `argo_manifest`  | URL pointing to the Argo CD YAML installation manifest                             | `https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`        |
+
+## Usage
+
+1. **Clone or Download** this repository and ensure you have the `k8s_add_argocd.yaml` file locally.
+2. **Check Ansible Configuration**: Confirm your `hosts` file or inventory is set to run against the `controlplane` host.
+3. **Execute the Playbook**:
+   ```bash
+   ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argocd.yaml
+   ```
+
 # Comprehensive Server Security Hardening Playbook
 
 ## Overview
