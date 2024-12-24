@@ -1,0 +1,24 @@
+---
+- name: Install Helm using the official script
+  hosts: controlplane
+  become: yes
+  tasks:
+    - name: Download Helm installation script
+      get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0700'
+
+    - name: Run the Helm installation script
+      command: /tmp/get_helm.sh
+      register: helm_install
+      changed_when: "'Helm' in helm_install.stdout"
+
+    - name: Verify Helm installation
+      command: helm version
+      register: helm_version
+      changed_when: false
+
+    - name: Display Helm version
+      debug:
+        msg: "{{ helm_version.stdout }}"
