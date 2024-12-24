@@ -38,6 +38,7 @@ server2 ansible_host=192.168.1.11 ansible_user=sysadm
 ```shell
  ansible-playbook -i inventory site.yml --extra-vars "new_user_password=YoursuPerStrongPassword!"
 ```
+---
 
 # Kubernetes Cluster Deployment with Ansible
 
@@ -255,6 +256,8 @@ ansible-playbook -i <inventory_file> update_kubernetes_worker.yml
 ```
 Replace <inventory_file> with your Ansible inventory file path.
 
+---
+
 # Add Ingress NGINX Manifest Playbook
 
 An Ansible playbook to deploy the Ingress NGINX controller on Kubernetes master nodes. This playbook applies the Ingress NGINX manifest to your Kubernetes cluster, ensuring that the necessary Ingress controller is installed and configured properly.
@@ -298,6 +301,8 @@ This playbook performs the following actions:
   ```yaml
   "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml"
 
+---
+
 # Ansible Playbook: Install and Patch Metrics Server
 
 ## Overview
@@ -334,6 +339,7 @@ The playbook performs the following tasks:
    ```bash
    ansible-playbook -i inventory metrics_server_install_patch.yaml
    ```
+---
 
 # Argo CD Ansible Playbook
 
@@ -365,6 +371,45 @@ This Ansible playbook installs Argo CD on a Kubernetes cluster by creating the `
    ```bash
    ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argocd.yaml
    ```
+
+---
+
+# Ansible Playbook: Install Helm
+
+This Ansible playbook automates the installation of Helm, the Kubernetes package manager, using the official installation script.
+
+## Features
+
+- Downloads the official Helm installation script.
+- Executes the script to install the latest version of Helm.
+- Verifies the installation by checking the Helm version.
+
+## Prerequisites
+
+- Ansible installed on your local machine.
+- SSH access to the target machines.
+- `sudo` privileges for the remote user.
+- Internet access on the target machines to download the Helm installation script.
+
+## How to Use
+
+1. Clone this repository or save the playbook file.
+2. Ensure your inventory file (`inventory`) contains the target hosts for the installation.
+3. Run the playbook with the following command:
+   ```bash
+   ansible-playbook -i inventory install_helm_script.yml
+   ```
+## Expected Output
+
+- Helm will be installed on the target machines.
+- The installed Helm version will be displayed at the end of the playbook execution.
+
+## Notes
+
+- The playbook uses the official Helm installation script hosted on GitHub.
+- Make sure the target machines can access `https://raw.githubusercontent.com`.
+
+---
 
 # Comprehensive Server Security Hardening Playbook
 
