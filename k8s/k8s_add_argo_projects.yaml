@@ -1,0 +1,65 @@
+---
+- name: Add argo cd
+  hosts: controlplane
+  become: yes
+  vars:
+    argocd_manifest: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+    argorollouts_manifest: "https://raw.githubusercontent.com/argoproj/argo-rollouts/stable/manifests/install.yaml"
+    argocd_image_updater_manifest: "https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml"
+
+  tasks:
+
+    - name: Add argo namespace
+      command: kubectl create namespace argocd
+      register: argo_result
+      retries: 5
+      delay: 10
+      until: argo_result.rc == 0
+      ignore_errors: yes
+
+    - name: Apply argo manifest
+      command: kubectl apply -n argocd -f {{ argocd_manifest }}
+      register: argo_result
+      retries: 5
+      delay: 10
+      until: argo_result.rc == 0
+      ignore_errors: yes
+
+    - name: Verify argo was applied
+      debug:
+        msg: "Argo CD was applied."
+      when: argo_result.rc == 0
+
+    - name: Apply argo image updater manifest
+      command: kubectl apply -n argocd -f {{ argocd_image_updater_manifest }}
+      register: argoimageupdater_result
+      retries: 5
+      delay: 10
+      until: argoimageupdater_result.rc == 0
+      ignore_errors: yes
+
+    - name: Verify argo image updater was applied
+      debug:
+        msg: "Argo CD image updater was applied."
+      when: argoimageupdater_result.rc == 0
+
+    - name: Add argo rollouts namespace
+      command: kubectl create namespace argo-rollouts
+      register: argo_result
+      retries: 5
+      delay: 10
+      until: argo_result.rc == 0
+      ignore_errors: yes
+
+    - name: Apply argo rollouts manifest
+      command: kubectl apply -n argo-rollout -f {{ argorollouts_manifest }}
+      register: argorollouts_result
+      retries: 5
+      delay: 10
+      until: argorollouts_result.rc == 0
+      ignore_errors: yes
+
+    - name: Verify argo rollouts was applied
+      debug:
+        msg: "Argo Rollouts was applied."
+      when: argorollouts_result.rc == 0
