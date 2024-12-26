@@ -341,27 +341,35 @@ The playbook performs the following tasks:
    ```
 ---
 
-# Argo CD Ansible Playbook
+# Argo Projects Ansible Playbook
 
-This Ansible playbook installs Argo CD on a Kubernetes cluster by creating the `argocd` namespace and applying the official Argo CD installation manifest.
+This Ansible playbook is designed to automate the deployment of Argo CD, Argo Rollouts, and Argo CD Image Updater to a Kubernetes cluster.
 
-## Overview
+## Prerequisites
 
-- **Namespace Creation**: Creates a namespace named `argocd` (if it does not already exist).
-- **Argo CD Manifest**: Applies the Argo CD installation manifest from the official GitHub repository.
-- **Verification**: Shows a debug message confirming successful application.
+- A Kubernetes cluster is already set up and accessible.
+- `kubectl` is installed and configured to interact with your cluster.
+- Ansible is installed on the control node.
 
-## Requirements
+## Playbook Overview
 
-- Ansible (version 2.9+ recommended)
-- Access to a Kubernetes cluster (and permissions to create namespaces and apply resources)
-- `kubectl` installed on the control machine where Ansible will run
+### Hosts
+The playbook is executed on the `controlplane`.
 
-## Variables
+### Variables
+- `argocd_manifest`: URL for the Argo CD installation manifest.
+- `argorollouts_manifest`: URL for the Argo Rollouts installation manifest.
+- `argocd_image_updater_manifest`: URL for the Argo CD Image Updater installation manifest.
 
-| Variable         | Description                                                                       | Default                                                                                   |
-|------------------|-----------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| `argo_manifest`  | URL pointing to the Argo CD YAML installation manifest                             | `https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`        |
+### Tasks
+1. **Add `argocd` Namespace**: Creates the namespace for Argo CD.
+2. **Apply Argo CD Manifest**: Deploys Argo CD components to the `argocd` namespace.
+3. **Verify Argo CD Deployment**: Confirms the successful application of the Argo CD manifest.
+4. **Apply Argo CD Image Updater Manifest**: Deploys the Argo CD Image Updater to the `argocd` namespace.
+5. **Verify Argo CD Image Updater Deployment**: Confirms the successful application of the Argo CD Image Updater manifest.
+6. **Add `argo-rollouts` Namespace**: Creates the namespace for Argo Rollouts.
+7. **Apply Argo Rollouts Manifest**: Deploys Argo Rollouts to the `argo-rollouts` namespace.
+8. **Verify Argo Rollouts Deployment**: Confirms the successful application of the Argo Rollouts manifest.
 
 ## Usage
 
@@ -369,7 +377,7 @@ This Ansible playbook installs Argo CD on a Kubernetes cluster by creating the `
 2. **Check Ansible Configuration**: Confirm your `hosts` file or inventory is set to run against the `controlplane` host.
 3. **Execute the Playbook**:
    ```bash
-   ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argocd.yaml
+   ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argo_projects.yaml
    ```
 
 ---
