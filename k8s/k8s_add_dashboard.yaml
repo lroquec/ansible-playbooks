@@ -1,0 +1,128 @@
+---
+- name: Install Kubernetes Dashboard using Helm
+  hosts: controlplane
+  become: true
+  gather_facts: false
+  
+  vars:
+    helm_chart_version: "7.10.0"
+    release_name: kubernetes-dashboard
+    namespace: kubernetes-dashboard
+    service_type: ClusterIP
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - python3-kubernetes
+          - python3-openshift
+          - python3-yaml
+          - python3-pip
+          - curl
+          - apt-transport-https
+        state: present
+        update_cache: yes
+
+    - name: Create namespace for Kubernetes Dashboard
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ namespace }}"
+
+    - name: Add Helm repo for Kubernetes Dashboard
+      kubernetes.core.helm_repository:
+        name: kubernetes-dashboard
+        repo_url: https://kubernetes.github.io/dashboard/
+        
+    - name: Update Helm repo
+      kubernetes.core.helm_repository:
+        name: kubernetes-dashboard
+        repo_url: https://kubernetes.github.io/dashboard/
+        state: present
+
+    - name: Install Kubernetes Dashboard
+      kubernetes.core.helm:
+        name: "{{ release_name }}"
+        chart_ref: kubernetes-dashboard/kubernetes-dashboard
+        chart_version: "{{ helm_chart_version }}"
+        release_namespace: "{{ namespace }}"
+        create_namespace: true
+        values:
+          service:
+            type: "{{ service_type }}"
+          extraArgs:
+            - --token-ttl=0
+          metricsScraper:
+            enabled: true
+          metrics-server:
+            enabled: false
+          rbac:
+            clusterReadOnlyRole: false
+
+    - name: Create ServiceAccount for Dashboard access
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: admin-user
+            namespace: "{{ namespace }}"
+
+    - name: Create ClusterRoleBinding for ServiceAccount
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: admin-user
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: cluster-admin
+          subjects:
+          - kind: ServiceAccount
+            name: admin-user
+            namespace: "{{ namespace }}"
+
+    - name: Verify if secret exists
+      command: kubectl get secret admin-user-token-secret -n {{ namespace }}
+      register: secret_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Create secret for token
+      shell: |
+        cat << EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: admin-user-token-secret
+          namespace: {{ namespace }}
+          annotations:
+            kubernetes.io/service-account.name: "admin-user"
+        type: kubernetes.io/service-account-token
+        EOF
+      when: secret_check.rc != 0
+
+    - name: Get token from secret
+      shell: >
+        kubectl get secret admin-user-token-secret -n {{ namespace }} 
+        -o jsonpath='{.data.token}' | base64 -d
+      register: token_output
+      changed_when: false
+
+    - name: Show token
+      debug:
+        msg: "Access token: {{ token_output.stdout }}"
+
+    - name: Show dashboard URL
+      debug:
+        msg: >
+          To access the Kubernetes Dashboard, run the following command:
+          1. Run: kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard-kong-proxy 8000:443
+          2. Go to: https://localhost:8000
