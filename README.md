@@ -380,6 +380,110 @@ The playbook is executed on the `controlplane`.
    ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argo_projects.yaml
    ```
 
+Here's a markdown README for the Kubernetes Dashboard installation playbook:
+
+# Kubernetes Dashboard Installation Playbook
+
+This Ansible playbook automates the installation and configuration of the Kubernetes Dashboard using Helm. It sets up a complete dashboard environment with proper authentication and RBAC configuration.
+
+## Prerequisites
+
+- Kubernetes cluster up and running
+- Ansible installed on the control machine
+- `kubectl` configured with cluster access
+- Helm installed on the control machine
+
+## Features
+
+- Installs Kubernetes Dashboard using Helm
+- Creates dedicated namespace
+- Configures service account with admin privileges
+- Sets up authentication token
+- Enables metrics scraper
+- Configures RBAC permissions
+
+## Variables
+
+You can customize the installation by modifying the following variables in the playbook:
+
+```yaml
+helm_chart_version: "7.10.0"
+release_name: kubernetes-dashboard
+namespace: kubernetes-dashboard
+service_type: ClusterIP
+```
+
+## Installation
+
+1. Clone this repository
+2. Review and adjust variables if needed
+3. Run the playbook:
+
+```bash
+ansible-playbook install-kubernetes-dashboard.yml
+```
+
+## Post-Installation
+
+After successful installation, the playbook will display:
+- The access token for dashboard authentication
+- Instructions to access the dashboard
+
+### Accessing the Dashboard
+
+1. Run the port-forward command:
+```bash
+kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard-kong-proxy 8000:443
+```
+
+2. Access the dashboard through your browser:
+```
+https://localhost:8000
+```
+
+3. Use the token displayed during installation to log in
+
+## Security Considerations
+
+- The playbook creates an admin user with cluster-admin privileges
+- Token TTL is set to 0 (tokens don't expire)
+- Service type is set to ClusterIP by default for security
+- HTTPS is enabled by default
+
+## Components Installed
+
+- Kubernetes Dashboard
+- Metrics Scraper
+- Required RBAC configurations
+- ServiceAccount and ClusterRoleBinding
+- Authentication token secret
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. Verify all prerequisites are met
+2. Check if the namespace was created successfully
+3. Ensure Helm repositories are accessible
+4. Verify the token secret was created properly
+
+## Notes
+
+- The dashboard is configured with metrics scraper enabled
+- The metrics-server is disabled by default
+- The service is configured as ClusterIP for security
+- Token-based authentication is implemented
+
+## Requirements
+
+The playbook will install the following packages:
+- python3-kubernetes
+- python3-openshift
+- python3-yaml
+- python3-pip
+- curl
+- apt-transport-https
+
 ---
 
 # Ansible Playbook: Install Helm
