@@ -62,9 +62,6 @@
               size: 10Gi
               accessModes: ["ReadWriteOnce"]
               existingClaim: grafana-pvc
-              
-          alertmanager:
-            enabled: false  # Disable Alertmanager, we will use Grafana for alerts
 
     - name: Install kube-prometheus-stack
       kubernetes.core.helm:

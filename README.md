@@ -517,7 +517,7 @@ ansible-playbook playbook.yml
 ### Storage Configuration
 
 - **Prometheus**: Uses a VolumeClaimTemplate for persistent storage
-  - Default size: 50Gi
+  - Default size: 10Gi
   - Access mode: ReadWriteOnce
 
 - **Grafana**: Uses a pre-created PVC
@@ -529,7 +529,6 @@ ansible-playbook playbook.yml
 
 - Prometheus Server with persistent storage
 - Grafana with persistent storage
-- AlertManager disabled (using Grafana Alerting instead)
 - Node Exporter
 - Kube State Metrics
 
