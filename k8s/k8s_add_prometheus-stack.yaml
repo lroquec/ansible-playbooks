@@ -8,7 +8,7 @@
     storage_class_name: "nfs-csi"
     prometheus_storage_size: 10Gi
     helm_chart_version: "67.5.0"
-    
+
   tasks:
     - name: Create namespace
       kubernetes.core.k8s:
@@ -18,12 +18,12 @@
           kind: Namespace
           metadata:
             name: "{{ prometheus_namespace }}"
-            
+
     - name: Add Helm repository
       kubernetes.core.helm_repository:
         name: prometheus-community
         repo_url: https://prometheus-community.github.io/helm-charts
-        
+
     - name: Create PVC for Grafana
       kubernetes.core.k8s:
         state: present
