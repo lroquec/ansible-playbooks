@@ -484,6 +484,114 @@ The playbook will install the following packages:
 - curl
 - apt-transport-https
 
+# Kube-Prometheus-Stack Installation with Ansible
+
+This repository contains Ansible playbooks for deploying the kube-prometheus-stack Helm chart with persistent storage for Prometheus and Grafana.
+
+## Prerequisites
+
+- Kubernetes cluster with a configured StorageClass
+- kubectl configured with access to your cluster
+- Ansible 2.9 or higher
+- Helm 3.x installed on your local machine
+
+## Installation Steps
+
+1. Install required Ansible collections:
+```bash
+ansible-galaxy collection install kubernetes.core
+```
+
+2. Configure your variables in the playbook:
+   - Set your `storage_class_name` to match your cluster's storage class
+   - Adjust `prometheus_storage_size` if needed (default: 50Gi)
+   - Update `helm_chart_version` if you need a specific version
+
+3. Run the playbook:
+```bash
+ansible-playbook playbook.yml
+```
+
+## Configuration Details
+
+### Storage Configuration
+
+- **Prometheus**: Uses a VolumeClaimTemplate for persistent storage
+  - Default size: 50Gi
+  - Access mode: ReadWriteOnce
+
+- **Grafana**: Uses a pre-created PVC
+  - Size: 10Gi
+  - Access mode: ReadWriteOnce
+  - PVC name: grafana-pvc
+
+### Components
+
+- Prometheus Server with persistent storage
+- Grafana with persistent storage
+- AlertManager disabled (using Grafana Alerting instead)
+- Node Exporter
+- Kube State Metrics
+
+### Data Persistence
+
+#### Grafana Persistence
+The playbook creates a dedicated PVC for Grafana that persists:
+- User configurations
+- Dashboards
+- Data source settings
+- Alert configurations
+- User preferences
+
+**Note**: After changing the Grafana admin password through the UI, it will persist across pod restarts and redeployments as long as the PVC is maintained.
+
+#### Prometheus Persistence
+Prometheus data is persisted using a VolumeClaimTemplate, ensuring:
+- Metric history is preserved
+- Queries and rules persist across restarts
+- Data survives pod rescheduling
+
+## Maintenance
+
+### Updating the Installation
+
+To update the installation:
+
+1. Update the `helm_chart_version` in the playbook
+2. Re-run the playbook:
+```bash
+ansible-playbook playbook.yml
+```
+
+### Uninstalling
+
+To remove the installation:
+```bash
+helm uninstall prometheus -n monitoring
+```
+
+**Note**: This will not delete the Grafana PVC. To delete it:
+```bash
+kubectl delete pvc grafana-pvc -n monitoring
+```
+
+## Troubleshooting
+
+1. Check pod status:
+```bash
+kubectl get pods -n monitoring
+```
+
+2. View Grafana logs:
+```bash
+kubectl logs -f deployment/prometheus-grafana -n monitoring
+```
+
+3. View Prometheus logs:
+```bash
+kubectl logs -f statefulset/prometheus-prometheus-kube-prometheus-prometheus -n monitoring
+```
+
 ---
 
 # Ansible Playbook: Install Helm
