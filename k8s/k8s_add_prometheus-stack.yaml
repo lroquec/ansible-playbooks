@@ -1,0 +1,88 @@
+---
+- name: Install kube-prometheus-stack
+  hosts: controlplane
+  gather_facts: false
+  
+  vars:
+    prometheus_namespace: monitoring
+    storage_class_name: "nfs-csi"
+    prometheus_storage_size: 10Gi
+    helm_chart_version: "67.5.0"
+    
+  tasks:
+    - name: Create namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ prometheus_namespace }}"
+            
+    - name: Add Helm repository
+      kubernetes.core.helm_repository:
+        name: prometheus-community
+        repo_url: https://prometheus-community.github.io/helm-charts
+        
+    - name: Create PVC for Grafana
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: grafana-pvc
+            namespace: "{{ prometheus_namespace }}"
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: "{{ storage_class_name }}"
+            resources:
+              requests:
+                storage: 5Gi
+
+    - name: Create custom values for Prometheus
+      copy:
+        dest: /tmp/prometheus-values.yaml
+        content: |
+          prometheus:
+            prometheusSpec:
+              storageSpec:
+                volumeClaimTemplate:
+                  spec:
+                    storageClassName: {{ storage_class_name }}
+                    accessModes: ["ReadWriteOnce"]
+                    resources:
+                      requests:
+                        storage: {{ prometheus_storage_size }}
+          
+          grafana:
+            persistence:
+              enabled: true
+              storageClassName: {{ storage_class_name }}
+              size: 10Gi
+              accessModes: ["ReadWriteOnce"]
+              existingClaim: grafana-pvc
+              
+          alertmanager:
+            enabled: false  # Disable Alertmanager, we will use Grafana for alerts
+
+    - name: Install kube-prometheus-stack
+      kubernetes.core.helm:
+        name: prometheus
+        chart_ref: prometheus-community/kube-prometheus-stack
+        chart_version: "{{ helm_chart_version }}"
+        release_namespace: "{{ prometheus_namespace }}"
+        create_namespace: true
+        values_files:
+          - /tmp/prometheus-values.yaml
+
+    - name: Wait for Prometheus pods to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ prometheus_namespace }}"
+        label_selectors:
+          - app.kubernetes.io/instance=prometheus
+      register: prometheus_pods
+      until: prometheus_pods.resources | length > 0 and (prometheus_pods.resources | map(attribute='status.phase') | list | unique == ['Running'])
+      retries: 30
+      delay: 10
