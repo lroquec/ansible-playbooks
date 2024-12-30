@@ -1,0 +1,309 @@
+---
+# playbook.yml
+- name: Install Logging Stack
+  hosts: controlplane
+  gather_facts: false
+  
+  vars:
+    namespace: logging
+    storage_class_name: "nfs-csi"  # Replace with your storage class
+    elasticsearch_version: "2.16.0"  # ECK operator version
+    kibana_version: "8.17.0"
+    fluent_bit_version: "0.48.3"  # Helm chart version
+    elasticsearch_storage: 10Gi
+    
+  tasks:
+    - name: Create namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ namespace }}"
+            
+    - name: Add elastic helm repo
+      kubernetes.core.helm_repository:
+        name: elastic
+        repo_url: https://helm.elastic.co
+        
+    - name: Add fluent helm repo
+      kubernetes.core.helm_repository:
+        name: fluent
+        repo_url: https://fluent.github.io/helm-charts
+
+    # Install ECK Operator
+    - name: Create ECK CRDs and operator
+      kubernetes.core.k8s:
+        state: present
+        src: https://download.elastic.co/downloads/eck/{{ elasticsearch_version }}/crds.yaml
+
+    - name: Install ECK operator
+      kubernetes.core.k8s:
+        state: present
+        src: https://download.elastic.co/downloads/eck/{{ elasticsearch_version }}/operator.yaml
+
+    # Create Elasticsearch cluster
+    - name: Deploy Elasticsearch
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: elasticsearch.k8s.elastic.co/v1
+          kind: Elasticsearch
+          metadata:
+            name: elasticsearch
+            namespace: "{{ namespace }}"
+          spec:
+            version: "{{ kibana_version }}"
+            nodeSets:
+            - name: default
+              count: 1
+              config:
+                node.store.allow_mmap: false
+                node.roles: ["master", "data", "ingest"]
+                cluster.routing.allocation.disk.threshold_enabled: false
+              volumeClaimTemplates:
+              - metadata:
+                  name: elasticsearch-data
+                spec:
+                  accessModes:
+                  - ReadWriteOnce
+                  resources:
+                    requests:
+                      storage: "{{ elasticsearch_storage }}"
+                  storageClassName: "{{ storage_class_name }}"
+              podTemplate:
+                spec:
+                  initContainers:
+                  - name: sysctl
+                    command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
+                    securityContext:
+                      privileged: true
+                  containers:
+                  - name: elasticsearch
+                    resources:
+                      requests:
+                        memory: 1Gi
+                        cpu: 0.25
+                      limits:
+                        memory: 2Gi
+                        cpu: 0.5
+                    env:
+                    - name: ES_JAVA_OPTS
+                      value: "-Xms1g -Xmx1g"
+                  securityContext:
+                    runAsUser: 1000
+                    fsGroup: 1000
+
+    # Deploy Kibana
+    - name: Deploy Kibana
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: kibana.k8s.elastic.co/v1
+          kind: Kibana
+          metadata:
+            name: kibana
+            namespace: "{{ namespace }}"
+          spec:
+            version: "{{ kibana_version }}"
+            count: 1
+            elasticsearchRef:
+              name: elasticsearch
+            podTemplate:
+              spec:
+                containers:
+                - name: kibana
+                  resources:
+                    requests:
+                      memory: 1Gi
+                      cpu: 0.5
+                    limits:
+                      memory: 2Gi
+                      cpu: 1
+
+    # Get Elasticsearch credentials
+    - name: Get elastic user password
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: elasticsearch-es-elastic-user
+        namespace: "{{ namespace }}"
+      register: elastic_secret
+      until: elastic_secret.resources is defined and elastic_secret.resources | length > 0
+      retries: 30
+      delay: 10
+
+    # Deploy Fluent Bit
+    - name: Install Fluent Bit
+      kubernetes.core.helm:
+        name: fluent-bit
+        chart_ref: fluent/fluent-bit
+        release_namespace: "{{ namespace }}"
+        chart_version: "{{ fluent_bit_version }}"
+        values:
+          luaScripts:
+            setIndex.lua: |
+              function set_index(tag, timestamp, record)
+                  index = "kube-"
+                  if record["kubernetes"] ~= nil then
+                      if record["kubernetes"]["namespace_name"] == "logging" then
+                          return -1, timestamp, record  -- Skip logs from the logging namespace
+                      end
+                      if record["kubernetes"]["namespace_name"] ~= nil then
+                          if record["kubernetes"]["container_name"] ~= nil then
+                              record["es_index"] = index
+                                  .. record["kubernetes"]["namespace_name"]
+                                  .. "-"
+                                  .. record["kubernetes"]["container_name"]
+                              return 1, timestamp, record
+                          end
+                          record["es_index"] = index
+                              .. record["kubernetes"]["namespace_name"]
+                          return 1, timestamp, record
+                      end
+                  end
+                  return 1, timestamp, record
+              end
+
+          config:
+            service: |
+              [SERVICE]
+                  Daemon Off
+                  Flush 1
+                  Log_Level info
+                  Parsers_File /fluent-bit/etc/parsers.conf
+                  Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
+                  HTTP_Server On
+                  HTTP_Listen 0.0.0.0
+                  HTTP_Port 2020
+                  Health_Check On
+
+            inputs: |
+              [INPUT]
+                  Name tail
+                  Path /var/log/containers/*.log
+                  multiline.parser docker, cri
+                  Tag kube.*
+                  Mem_Buf_Limit 5MB
+                  Skip_Long_Lines On
+
+              [INPUT]
+                  Name systemd
+                  Tag host.*
+                  Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+                  Read_From_Tail On
+
+            filters: |
+              [FILTER]
+                  Name kubernetes
+                  Match kube.*
+                  Merge_Log On
+                  Keep_Log Off
+                  K8S-Logging.Parser On
+                  K8S-Logging.Exclude On
+
+              [FILTER]
+                  Name lua
+                  Match kube.*
+                  script /fluent-bit/scripts/setIndex.lua
+                  call set_index
+
+            outputs: |
+              [OUTPUT]
+                  Name es
+                  Match kube.*
+                  Host elasticsearch-es-http
+                  Port 9200
+                  HTTP_User elastic
+                  HTTP_Passwd ${ELASTICSEARCH_PASSWORD}
+                  Logstash_Format On
+                  Logstash_Prefix logs
+                  Suppress_Type_Name On
+                  Type _doc
+                  tls On
+                  tls.verify Off
+                  Retry_Limit False
+
+              [OUTPUT]
+                  Name es
+                  Match host.*
+                  Host elasticsearch-es-http
+                  Port 9200
+                  HTTP_User elastic
+                  HTTP_Passwd ${ELASTICSEARCH_PASSWORD}
+                  Logstash_Format On
+                  Logstash_Prefix node
+                  Type _doc
+                  tls On
+                  tls.verify Off
+                  Retry_Limit False
+                  Suppress_Type_Name On
+
+          customParsers: |
+            [PARSER]
+                Name docker_no_time
+                Format json
+                Time_Keep Off
+                Time_Key time
+                Time_Format %Y-%m-%dT%H:%M:%S.%L
+          env:
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elasticsearch-es-elastic-user
+                  key: elastic
+          tolerations:
+            - operator: Exists
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+
+    # Wait for pods to be ready
+    - name: Wait for Elasticsearch pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - elasticsearch.k8s.elastic.co/statefulset-name=elasticsearch-es-default
+      register: es_pods
+      until: es_pods.resources | length > 0 and (es_pods.resources | map(attribute='status.phase') | list | unique == ['Running'])
+      retries: 30
+      delay: 10
+
+    - name: Wait for Kibana pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - kibana.k8s.elastic.co/name=kibana
+      register: kibana_pods
+      until: kibana_pods.resources | length > 0 and (kibana_pods.resources | map(attribute='status.phase') | list | unique == ['Running'])
+      retries: 30
+      delay: 10
+
+    # Get and display access information
+    - name: Get elastic user password
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Secret
+        name: elasticsearch-es-elastic-user
+        namespace: "{{ namespace }}"
+      register: elastic_password
+
+    - name: Show access information
+      debug:
+        msg: |
+          To access Kibana:
+          
+          1. Port forward the Kibana service:
+             kubectl port-forward -n {{ namespace }} service/kibana-kb-http 5601:5601
+          
+          2. Go to: https://localhost:5601
+          
+          Credentials:
+          - User: elastic
+          - Pass: {{ elastic_password.resources[0].data.elastic | b64decode }}
