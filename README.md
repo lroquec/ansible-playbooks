@@ -380,8 +380,6 @@ The playbook is executed on the `controlplane`.
    ansible-playbook -i inventory.ini tests/ansible-playbooks/k8s/k8s_add_argo_projects.yaml
    ```
 
-Here's a markdown README for the Kubernetes Dashboard installation playbook:
-
 # Kubernetes Dashboard Installation Playbook
 
 This Ansible playbook automates the installation and configuration of the Kubernetes Dashboard using Helm. It sets up a complete dashboard environment with proper authentication and RBAC configuration.
@@ -627,6 +625,114 @@ This Ansible playbook automates the installation of Helm, the Kubernetes package
 
 - The playbook uses the official Helm installation script hosted on GitHub.
 - Make sure the target machines can access `https://raw.githubusercontent.com`.
+
+# Kubernetes Logging Stack Deployment Playbook
+
+## Overview
+
+This Ansible playbook automates the deployment of a comprehensive logging stack in Kubernetes, utilizing:
+- Elasticsearch Operator (ECK)
+- Elasticsearch
+- Kibana
+- Fluent Bit
+
+The playbook provides a robust, production-ready logging solution with automated configuration, index lifecycle management (ILM), and log routing.
+
+## Prerequisites
+
+- Ansible with `kubernetes.core` collection installed
+- Kubernetes cluster
+- `kubectl` configured
+- Helm installed
+- NFS storage class configured (configurable in playbook)
+
+## Key Components
+
+### Elasticsearch Configuration
+- Single-node cluster setup
+- 10Gi persistent storage
+- Custom node roles and configurations
+- Configured with monitoring and ILM policies
+
+### Kibana
+- Integrated with Elasticsearch
+- Minimal resource configuration
+- Single replica deployment
+
+### Fluent Bit
+- Log collection from container logs and systemd
+- Custom Lua script for intelligent log indexing
+- TLS-enabled Elasticsearch output
+- Dynamic index naming based on namespace and container
+
+## Installation
+
+1. Review and modify variables in the playbook:
+   ```yaml
+   vars:
+     namespace: logging
+     storage_class_name: "nfs-csi"
+     elasticsearch_version: "2.16.0"
+     kibana_version: "8.17.0"
+     fluent_bit_version: "0.48.3"
+     elasticsearch_storage: 10Gi
+   ```
+
+2. Run the playbook:
+   ```bash
+   ansible-playbook playbook.yml
+   ```
+
+## Access Kibana
+
+After deployment, access Kibana:
+1. Port forward the service:
+   ```bash
+   kubectl port-forward -n logging service/kibana-kb-http 5601:5601
+   ```
+2. Open `https://localhost:5601`
+3. Login with:
+   - Username: `elastic`
+   - Password: Retrieved from Kubernetes secret
+
+## Log Routing Strategy
+
+- Logs are indexed based on namespace and container name
+- Naming convention: `kube-{namespace}-{container}`
+- Systemd logs are indexed separately under `node-*`
+
+## ILM (Index Lifecycle Management) Policies
+
+- Hot Phase: Rollover after 1 day or 5GB
+- Warm Phase: Moved after 1 day
+- Delete Phase: Removed after 3 days
+
+## Customization
+
+Modify the playbook to:
+- Adjust storage sizes
+- Change node counts
+- Customize log routing
+- Adapt resource limits
+
+## Security Considerations
+
+- Uses ECK operator for secure deployment
+- TLS enabled for Elasticsearch
+- Credential management via Kubernetes secrets
+- Minimal required permissions
+
+## Troubleshooting
+
+- Check pod status: `kubectl get pods -n logging`
+- Inspect Fluent Bit logs: `kubectl logs -n logging fluent-bit-*`
+- Verify Elasticsearch health: `kubectl get elasticsearch -n logging`
+
+## Known Limitations 
+
+- Single-node Elasticsearch cluster
+- Basic ILM policy
+- Minimal resource configuration
 
 ---
 
