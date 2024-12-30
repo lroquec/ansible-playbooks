@@ -62,6 +62,8 @@
                 node.store.allow_mmap: false
                 node.roles: ["master", "data", "ingest"]
                 cluster.routing.allocation.disk.threshold_enabled: false
+                # Add ILM settings
+                xpack.monitoring.collection.enabled: true
               volumeClaimTemplates:
               - metadata:
                   name: elasticsearch-data
@@ -122,6 +124,18 @@
                       memory: 2Gi
                       cpu: 1
 
+    # Wait for Elasticsearch to be ready before configuring ILM
+    - name: Wait for Elasticsearch pods
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: "{{ namespace }}"
+        label_selectors:
+          - elasticsearch.k8s.elastic.co/statefulset-name=elasticsearch-es-default
+      register: es_pods
+      until: es_pods.resources | length > 0 and (es_pods.resources | map(attribute='status.phase') | list | unique == ['Running'])
+      retries: 30
+      delay: 10
+
     # Get Elasticsearch credentials
     - name: Get elastic user password
       kubernetes.core.k8s_info:
@@ -134,7 +148,48 @@
       retries: 30
       delay: 10
 
-    # Deploy Fluent Bit
+    - name: Wait for Elasticsearch health
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ es_pods.resources[0].metadata.name }}"
+        container: elasticsearch
+        command: >-
+          curl -k -s
+          -u "elastic:{{ elastic_secret.resources[0].data.elastic | b64decode }}"
+          "https://elasticsearch-es-http:9200/_cluster/health"
+      register: health_check
+
+      until: health_check.stdout is defined and health_check.stdout is search('(green|yellow)')
+      retries: 30
+      delay: 10
+
+    # ILM Policy
+    - name: Configure ILM Policy
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ es_pods.resources[0].metadata.name }}"
+        container: elasticsearch
+        command: >-
+          curl -X PUT "https://elasticsearch-es-http:9200/_ilm/policy/logs-policy"
+          -H "Content-Type: application/json"
+          -u "elastic:{{ elastic_secret.resources[0].data.elastic | b64decode }}"
+          -k
+          -d '{"policy":{"phases":{"hot":{"min_age":"0ms","actions":{"rollover":{"max_age":"1d","max_size":"5gb"},"set_priority":{"priority":100}}},"warm":{"min_age":"1d","actions":{"set_priority":{"priority":50}}},"delete":{"min_age":"3d","actions":{"delete":{"delete_searchable_snapshot":true}}}}}}'
+
+    # Index Template
+    - name: Configure Index Template
+      kubernetes.core.k8s_exec:
+        namespace: "{{ namespace }}"
+        pod: "{{ es_pods.resources[0].metadata.name }}"
+        container: elasticsearch
+        command: >-
+          curl -X PUT "https://elasticsearch-es-http:9200/_index_template/logs-template"
+          -H "Content-Type: application/json"
+          -u "elastic:{{ elastic_secret.resources[0].data.elastic | b64decode }}"
+          -k
+          -d '{"index_patterns":["logs-*","node-*"],"template":{"settings":{"number_of_shards":1,"number_of_replicas":0,"index.lifecycle.name":"logs-policy","index.lifecycle.rollover_alias":"logs"}}}'
+
+    # Fluent Bit
     - name: Install Fluent Bit
       kubernetes.core.helm:
         name: fluent-bit
@@ -219,6 +274,9 @@
                   HTTP_Passwd ${ELASTICSEARCH_PASSWORD}
                   Logstash_Format On
                   Logstash_Prefix logs
+                  Logstash_DateFormat %Y.%m.%d
+                  Time_Key @timestamp
+                  Generate_ID On
                   Suppress_Type_Name On
                   Type _doc
                   tls On
@@ -234,11 +292,14 @@
                   HTTP_Passwd ${ELASTICSEARCH_PASSWORD}
                   Logstash_Format On
                   Logstash_Prefix node
+                  Logstash_DateFormat %Y.%m.%d
+                  Time_Key @timestamp
+                  Generate_ID On
+                  Suppress_Type_Name On
                   Type _doc
                   tls On
                   tls.verify Off
                   Retry_Limit False
-                  Suppress_Type_Name On
 
           customParsers: |
             [PARSER]
@@ -247,32 +308,23 @@
                 Time_Keep Off
                 Time_Key time
                 Time_Format %Y-%m-%dT%H:%M:%S.%L
+
           env:
             - name: ELASTICSEARCH_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: elasticsearch-es-elastic-user
                   key: elastic
+
           tolerations:
             - operator: Exists
+
           resources:
             limits:
               memory: 200Mi
             requests:
               cpu: 100m
               memory: 128Mi
-
-    # Wait for pods to be ready
-    - name: Wait for Elasticsearch pods
-      kubernetes.core.k8s_info:
-        kind: Pod
-        namespace: "{{ namespace }}"
-        label_selectors:
-          - elasticsearch.k8s.elastic.co/statefulset-name=elasticsearch-es-default
-      register: es_pods
-      until: es_pods.resources | length > 0 and (es_pods.resources | map(attribute='status.phase') | list | unique == ['Running'])
-      retries: 30
-      delay: 10
 
     - name: Wait for Kibana pods
       kubernetes.core.k8s_info:
